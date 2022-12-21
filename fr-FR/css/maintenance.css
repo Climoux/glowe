@@ -1,0 +1,10 @@
+body {
+    background:url("https://balticgrid.eu/wp-content/uploads/2019/12/hebergement-web-1568x882.jpg");
+    background-size: cover;
+    color: #fff;
+    font-family: sans-serif;
+}
+
+h1 {
+    text-align: center;
+}

