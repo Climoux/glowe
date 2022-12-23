@@ -1,1 +1,0 @@
-<?php header('Location:https://glowe.fr/fr-FR/projects/hébergeur/'); ?>

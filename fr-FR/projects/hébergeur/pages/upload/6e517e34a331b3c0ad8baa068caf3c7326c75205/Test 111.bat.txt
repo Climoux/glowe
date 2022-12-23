@@ -1,4 +1,0 @@
-﻿@echo off
-:test
-start
-goto test
